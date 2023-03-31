@@ -1,16 +1,13 @@
 # Import necessary modules
 import os
 import io
-import json
-import time
 import boto3
 import openai
-import requests
 from airflow import DAG
 from pathlib import Path
 from dotenv import load_dotenv
 from airflow.models.param import Param
-from datetime import timedelta, datetime
+from datetime import timedelta
 from airflow.utils.dates import days_ago
 from airflow.operators.python_operator import PythonOperator
 
@@ -95,12 +92,10 @@ def transcribe_media_file():
         response = s3Client.get_object(Bucket=user_s3_bucket, Key=s3_object_key)
         audio_file = io.BytesIO(response['Body'].read())
         audio_file.name = s3_object_key
-
         # Transcribe the audio file using the OpenAI API
         transcript = openai.Audio.transcribe("whisper-1", audio_file)
         text = transcript["text"]
         text_list.append(text)
-    
     return file_list, text_list
 
 def transcript_file_s3():
@@ -137,12 +132,10 @@ def gpt_default_questions():
         )
         answer = response.choices[0].text.strip()
         answer_list.append(answer)
-    
     return answer_list
 
 def push_answers_s3():
     answer_list = gpt_default_questions()
-    
     s3_folder_name = "Batch-Folder/"
     s3_files = s3Client.list_objects(Bucket = user_s3_bucket, Prefix = s3_folder_name).get('Contents')
     file_list = []

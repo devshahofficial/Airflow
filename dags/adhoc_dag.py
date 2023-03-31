@@ -1,21 +1,13 @@
 import os
 import io
-import json
 import boto3
 import openai
-import requests
-import pandas as pd
 from airflow import DAG
 from pathlib import Path
-from botocore import UNSIGNED
-from botocore.config import Config
 from dotenv import load_dotenv
-from airflow.models.param import Param
-from datetime import timedelta, datetime
+from datetime import timedelta
 from airflow.utils.dates import days_ago
-from airflow.operators.bash_operator import BashOperator
 from airflow.operators.python_operator import PythonOperator
-import random
 
 # Create DAG with the given parameters
 dag = DAG(
@@ -65,18 +57,6 @@ def transcribe_media_file(s3_object_key, ti, **kwargs):
     # Upload the transcript as a text file to the S3 bucket
     s3Client.put_object(Bucket=user_s3_bucket, Key='Processed-Text-Folder/' + filename, Body=text)
     ti.xcom_push(key="answers", value=text)
-    
-    
-
-# def transcript_file_s3(s3_object_key, transcript):
-#     # Get the file name from the S3 object key
-#     filename = s3_object_key.split('/')[-1].replace('.mp3','.txt')
-    
-#     # Upload the transcript as a text file to the S3 bucket
-#     s3Client.put_object(Bucket=user_s3_bucket, Key='Processed-Text-Folder/' + filename, Body=transcript)
-    
-#     # Return the S3 object key of the transcript text file
-#     return 'Processed-Text-Folder/' + filename
 
 def gpt_default_questions(transcript, s3_object_key):
     prompt = f'Context: {transcript}\nGenerate 3-4 default questions on the selected transcript and generate answers for the same:'
@@ -92,11 +72,6 @@ def gpt_default_questions(transcript, s3_object_key):
     answer = response.choices[0].text.strip()
     filename = s3_object_key.split('/')[1].replace('.mp3','_answers.txt')
     s3Client.put_object(Bucket = user_s3_bucket, Key = 'GPT-Answers-Folder/'+filename, Body = answer)
-    # return answer
-
-# def push_answers_s3(s3_object_key, answer):
-#     filename = s3_object_key.split('/')[1].replace('.mp3','_answers.txt')
-#     s3Client.put_object(Bucket = user_s3_bucket, Key = 'GPT-Answers-Folder/'+filename, Body = answer)
 
 with dag:
     transcribe_audio_file = PythonOperator(
@@ -107,16 +82,6 @@ with dag:
                     'transcript': "{{task_instance.xcom_pull(task_ids='transcribe_media_file', key='text')}}"}
     )
 
-    # transcript_file_s3_task = PythonOperator(
-    #     task_id='transcript_file_s3_task',
-    #     python_callable=transcript_file_s3,
-    #     provide_context=True,
-    #     op_kwargs={
-    #             's3_object_key': '{{ dag_run.conf["s3_object_key"] }}',
-    #             'transcript': '{{ task_instance.xcom_pull(task_ids="transcribe_audio_file_task", key="text") }}'
-    #     }
-    # )
-    
     gpt_default_questions_task = PythonOperator(
         task_id='gpt_default_questions_task',
         python_callable=gpt_default_questions,
@@ -125,14 +90,4 @@ with dag:
                     }
     )
     
-    # push_answers_task = PythonOperator(   
-    # task_id='push_gpt_answers_task',
-    # python_callable = push_answers_s3,
-    # op_kwargs={
-    #             's3_object_key': '{{ dag_run.conf["s3_object_key"] }}',
-    #             'answer': '{{ task_instance.xcom_pull(task_ids="gpt_default_questions_task", key="answer") }}'
-    #             }
-    # )
-
-    transcribe_audio_file >> gpt_default_questions_task 
-    # transcript_file_s3_task >> push_answers_task
+    transcribe_audio_file >> gpt_default_questions_task
